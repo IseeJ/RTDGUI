@@ -17,9 +17,9 @@ from RTDmainwindow import Ui_MainWindow
 from PyQt5.QtSerialPort import QSerialPort, QSerialPortInfo
 
 
-
 #https://realpython.com/python-pyqt-qthread/
 #https://www.pythonguis.com/tutorials/multithreading-pyqt-applications-qthreadpool/
+
 class DateAxisItem(AxisItem):
     def __init__(self, *args, **kwargs):
         AxisItem.__init__(self, *args, **kwargs)
@@ -38,7 +38,7 @@ class Worker(QThread):
         self.interval = interval
         self.baud = baud
         print("Starting Serial")
-    """
+
     def run(self):
         try:
             self.ser = serial.Serial(self.port, self.baud, timeout=10000)
@@ -78,7 +78,8 @@ class Worker(QThread):
             current_time = str(now_time.strftime('%Y%m%dT%H%M%S.%f')[:-3])  
             print(f"Time: {current_time}, Temperatures: {temperatures}")
             self.result.emit(current_time,temperatures, RTDdata)
-
+    """
+ 
     def stop(self):
         self.is_running = False
         if self.ser:
@@ -97,8 +98,8 @@ def parse_temp0(self):
     R3 = 0
     R4 = 0
 
-    T1 = float(random.randint(-170,-160))
-    T2 = float(random.randint(-170,-160))
+    T1 = float(random.randint(-200,-180))
+    T2 = float(random.randint(-200,-180))
     T3 = float(random.randint(-200,-180))
     T4 = float(random.randint(-200,-180))
     RTDdata = []
@@ -188,7 +189,7 @@ class TempModel(QObject):
 class MainWindow(QMainWindow):
     def __init__(self):
         super(MainWindow, self).__init__()
-        self.setWindowIcon(QIcon('logo.png'))
+        self.setWindowIcon(QIcon('icon.ico'))
         self.worker = None
         self.ui = Ui_MainWindow()
         self.ui.setupUi(self)
@@ -198,6 +199,15 @@ class MainWindow(QMainWindow):
         self.ui.refreshButton.pressed.connect(self.refreshSerialPorts)
         self.ui.saveDirectoryButton.pressed.connect(self.chooseSaveDirectory)
 
+        # Set the default save directory (change this to your desired path)
+        self.defaultSaveDirectory = "C:/Users/wzwei/Desktop/RTD"
+        self.saveDirectory = None
+
+        # Add toggle scale button for switching between linear and log scale
+        self.toggleScaleButton = QPushButton('Linear/Log (Y-axis)', self)
+        self.toggleScaleButton.clicked.connect(self.toggleScale)
+        self.ui.verticalLayout.addWidget(self.toggleScaleButton)
+
         self.model = TempModel()
         self.initGraph()
         self.filename = None
@@ -205,7 +215,9 @@ class MainWindow(QMainWindow):
         self.saveDirectory = None
         self.interval = 1 #2 sec default
         self.baud = 9600
-        
+
+        self.isLogScale = True  # Keep track of the current scale mode
+
     def initFile(self):
         now = dt.datetime.now()
         self.filename = "temp_log_" + str(now.strftime('%Y%m%dT%H%M%S')) + ".csv"
@@ -217,13 +229,18 @@ class MainWindow(QMainWindow):
             print(f"Error opening file: {e}")
 
     def initGraph(self):
-        self.ui.graphWidget.setBackground("w")
+        self.ui.graphWidget.setBackground("w") #Set background color to be white
         styles = {"color": "black", "font-size": "18px"}
         self.ui.graphWidget.setLabel("left", "Temperature (°C)", **styles)
         self.ui.graphWidget.setLabel("bottom", "Time", **styles)
         self.ui.graphWidget.getAxis('bottom').setStyle(tickTextOffset=10)
         self.ui.graphWidget.setAxisItems({'bottom': DateAxisItem(orientation='bottom')})
+
         self.ui.graphWidget.showGrid(x=True, y=True, alpha=0.4)
+
+        # Set y-axis to logarithmic scale
+        self.ui.graphWidget.setLogMode(x=False, y=True)
+
         self.time = []
         self.data = [[] for _ in range(8)]
         self.plotLines = []
@@ -231,6 +248,11 @@ class MainWindow(QMainWindow):
         for i in range(4):
             plot_line = self.ui.graphWidget.plot(self.time, self.data[i], pen=pg.mkPen(color=self.colors[i], width=2))
             self.plotLines.append(plot_line)
+    
+    def toggleScale(self):
+        # Toggle between linear and log scale for the y-axis
+        self.isLogScale = not self.isLogScale
+        self.ui.graphWidget.setLogMode(x=False, y=self.isLogScale)
 
     def toggleRun(self):
         if self.worker is not None:
@@ -264,6 +286,7 @@ class MainWindow(QMainWindow):
             self.worker.result.connect(self.updateData)
             self.worker.start()
             print("Starting Worker")
+            self.startLogging()
         except serial.SerialException as e:
             print(f"Could not open serial port: {e}")
             self.worker = None
@@ -276,11 +299,13 @@ class MainWindow(QMainWindow):
 
     def clearPlot(self):
         self.time = []
-        self.data = [[] for _ in range(8)]
-        for i in range(8):
+        self.data = [[] for _ in range(4)]
+        for i in range(4):
             self.plotLines[i].setData(self.time, self.data[i])
 
     def startLogging(self):
+        if self.saveDirectory is None:
+            self.saveDirectory = self.defaultSaveDirectory
         self.initFile()
         self.ui.fileLabel.setText(f"{self.saveDirectory}/{self.filename}")
  
@@ -330,7 +355,7 @@ class MainWindow(QMainWindow):
             print(f"Error writing to file: {e}")
 
 app = QApplication(sys.argv)
-path = os.path.join(os.path.dirname(sys.modules[__name__].__file__), 'RTDicon.PNG')
+path = os.path.join(os.path.dirname(sys.modules[__name__].__file__), 'icon.ico')
 
 app.setWindowIcon(QIcon(path))
 window = MainWindow()
